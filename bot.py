@@ -36,7 +36,7 @@ LOG_FILE = "bot.log"
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = "cuarentaroleplay-dev/patria-session"  # ← CAMBIA TU_USUARIO por tu nombre de GitHub
-SESSION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/patria_session.json"
+SESSION_URL = f"SESSION_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/patria_session.json"
 
 # ============================================================
 # FUNCIONES AUXILIARES
@@ -53,13 +53,13 @@ def log(mensaje):
     print(mensaje)
 
 def descargar_sesion():
-    """Descarga el archivo de sesión desde GitHub (repositorio privado)"""
     try:
-        headers = {}
-        if GITHUB_TOKEN:
-            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3.raw"
+        }
         
-        log(f"🔐 Descargando sesión desde: {SESSION_URL}")
+        log(f"🔐 Descargando sesión desde GitHub API...")
         response = requests.get(SESSION_URL, headers=headers)
         
         if response.status_code == 200:
@@ -68,7 +68,7 @@ def descargar_sesion():
             log("✅ Sesión descargada correctamente desde GitHub")
             return True
         else:
-            log(f"⚠️ No se pudo descargar sesión: {response.status_code}")
+            log(f"⚠️ Error {response.status_code}: {response.text[:100]}")
             return False
     except Exception as e:
         log(f"❌ Error descargando sesión: {e}")

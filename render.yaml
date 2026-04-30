@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: patria-bot
+    runtime: image
+    repo: https://github.com/TU_USUARIO/patria-bot
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false

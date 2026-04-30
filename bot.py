@@ -109,10 +109,9 @@ def ayuda(message):
 @bot.message_handler(commands=['estado'])
 def estado(message):
     if sesion_activa():
-        bot.reply_to(message, "✅ *Sesión de Patria ACTIVA*\nEl bot está listo para consultar", parse_mode='Markdown')
+        bot.reply_to(message, "✅ Sesión de Patria ACTIVA\n\nEl bot está listo para consultar")
     else:
-        bot.reply_to(message, "❌ *Sesión NO configurada*\n\nNecesitas generar el archivo patria_session.json", parse_mode='Markdown')
-
+        bot.reply_to(message, "❌ Sesión NO configurada\n\nNecesitas generar el archivo patria_session.json")
 @bot.message_handler(commands=['buscar'])
 def buscar(message):
     try:

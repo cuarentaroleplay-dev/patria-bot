@@ -34,7 +34,7 @@ LOG_FILE = "bot.log"
 # CONFIGURACIÓN DE GITHUB (para descargar la sesión)
 # ============================================================
 
-GITHUB_TOKEN = os.environ.get("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")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = "cuarentaroleplay-dev/patria-session"  # ← CAMBIA TU_USUARIO por tu nombre de GitHub
 SESSION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/patria_session.json"
 

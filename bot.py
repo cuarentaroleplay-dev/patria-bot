@@ -35,7 +35,7 @@ LOG_FILE = "bot.log"
 # ============================================================
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = "cuarentaroleplay-dev/patria-session"  # ← CAMBIA TU_USUARIO por tu nombre de GitHub
+GITHUB_REPO = "cuarentaroleplay-dev/patria-bot"  # ← CAMBIA TU_USUARIO por tu nombre de GitHub
 SESSION_URL = f"SESSION_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/patria_session.json"
 
 # ============================================================

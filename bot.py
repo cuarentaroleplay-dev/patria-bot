@@ -1,84 +1,44 @@
-#!/usr/bin/env python3
-"""
-Bot de Telegram para consultar cédulas en Patria
-Funciona con Playwright y mantiene sesión desde GitHub privado
-"""
-
 import telebot
 import os
 import time
 import json
 import re
 import requests
-from datetime import datetime
 from playwright.sync_api import sync_playwright
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
-# Token del bot de Telegram (desde variable de entorno)
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-if not TOKEN:
-    print("❌ Error: TELEGRAM_TOKEN no está configurado")
-    exit(1)
-
-# Inicializar bot
 bot = telebot.TeleBot(TOKEN)
 
-# Archivos
+# Configuración
 SESSION_FILE = "patria_session.json"
-LOG_FILE = "bot.log"
-
-# ============================================================
-# CONFIGURACIÓN DE GITHUB (para descargar la sesión)
-# ============================================================
-
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = "cuarentaroleplay-dev/patria-bot"
-SESSION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/patria_session.json"
-
-# ============================================================
-# FUNCIONES AUXILIARES
-# ============================================================
-
-def log(mensaje):
-    """Guarda mensajes en archivo de log"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        with open(LOG_FILE, 'a') as f:
-            f.write(f"[{timestamp}] {mensaje}\n")
-    except:
-        pass
-    print(mensaje)
+URL_SESION = "https://raw.githubusercontent.com/cuarentaroleplay-dev/patria-bot/main/patria_session.json"
 
 def descargar_sesion():
-    """Descarga el archivo de sesión desde GitHub (repositorio privado)"""
+    """Descarga el archivo de sesión"""
     try:
-        headers = {}
-        if GITHUB_TOKEN:
-            headers["Authorization"] = f"token {GITHUB_TOKEN}"
-        
-        log(f"🔐 Descargando sesión desde: {SESSION_URL}")
-        response = requests.get(SESSION_URL, headers=headers)
-        
+        print(f"Descargando de: {URL_SESION}")
+        response = requests.get(URL_SESION, timeout=10)
         if response.status_code == 200:
             with open(SESSION_FILE, "w") as f:
                 f.write(response.text)
-            log("✅ Sesión descargada correctamente desde GitHub")
+            print("✅ Sesión descargada")
+            
+            # Verificar que se guardó bien
+            with open(SESSION_FILE, "r") as f:
+                data = json.load(f)
+                print(f"Cookies encontradas: {len(data.get('cookies', []))}")
             return True
         else:
-            log(f"⚠️ No se pudo descargar sesión: {response.status_code}")
+            print(f"Error {response.status_code}")
             return False
     except Exception as e:
-        log(f"❌ Error descargando sesión: {e}")
+        print(f"Error: {e}")
         return False
 
 def sesion_activa():
-    """Verifica si el archivo de sesión existe y es válido"""
+    """Verifica si hay sesión"""
     if not os.path.exists(SESSION_FILE):
         return False
-    
     try:
         with open(SESSION_FILE, 'r') as f:
             data = json.load(f)
@@ -86,251 +46,94 @@ def sesion_activa():
     except:
         return False
 
-def consultar_patria(cedula_completa):
-    """
-    Consulta una cédula en Patria usando Playwright
-    Retorna: "REGISTRADA", "NO_REGISTRADA", "SESION_EXPIRADA" o mensaje de error
-    """
-    browser = None
+def consultar_patria(cedula):
     try:
         with sync_playwright() as p:
-            # Lanzar navegador (headless = sin interfaz gráfica)
-            browser = p.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-gpu']
-            )
-            
-            # Cargar la sesión guardada
-            if not os.path.exists(SESSION_FILE):
-                return "SESION_NO_CONFIGURADA"
-            
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
             context = browser.new_context(storage_state=SESSION_FILE)
             page = context.new_page()
             
-            # Ir a la página de registro de pagos
             page.goto("https://persona.patria.org.ve/monedero/pagos/registrar")
             page.wait_for_load_state("networkidle")
             
-            # ===== PASOS DEL SCRIPT ORIGINAL =====
-            
-            # 1. Seleccionar monedero destino
+            # Seleccionar monedero
             page.click('input[type="text"][value="Selecciona el Monedero Destino"]')
             time.sleep(0.3)
             page.click('//span[contains(text(), "Monedero Bolívar Digital (Bs)")]')
             time.sleep(0.3)
             
-            # 2. Seleccionar tipo "Cédula"
+            # Seleccionar tipo cédula
             page.click('#select2-form_transfer_destination_type_select-container')
             time.sleep(0.3)
-            search_field = page.locator('.select2-search__field')
-            search_field.fill('cedula')
+            page.locator('.select2-search__field').fill('cedula')
             time.sleep(0.3)
             page.click('//li[contains(text(), "Otro (Cédula)")]')
             time.sleep(0.3)
             
-            # 3. Escribir descripción
+            # Descripción
             page.fill('#form_transfer_description', "consulta")
             time.sleep(0.2)
             
-            # 4. Escribir la cédula y consultar
-            cedula_input = page.locator('#form_transfer_identification')
-            cedula_input.fill('')
-            cedula_input.fill(cedula_completa)
+            # Consultar
+            page.fill('#form_transfer_identification', cedula)
             page.click('#continue')
-            
-            # 5. Esperar respuesta
             time.sleep(2)
             
-            # 6. Verificar resultado
-            mensaje_no_registrada = page.locator('div:has-text("La persona no esta registrada")')
-            
-            browser.close()
-            
-            if mensaje_no_registrada.count() > 0:
-                return "NO_REGISTRADA"
+            # Resultado
+            if page.locator('div:has-text("La persona no esta registrada")').count() > 0:
+                return "❌ NO REGISTRADA"
             else:
-                return "REGISTRADA"
+                return "✅ REGISTRADA"
                 
     except Exception as e:
-        log(f"Error en consulta: {e}")
-        error_str = str(e).lower()
-        if "session" in error_str or "storage" in error_str:
-            return "SESION_EXPIRADA"
-        return f"ERROR: {str(e)[:50]}"
-    finally:
-        if browser:
-            try:
-                browser.close()
-            except:
-                pass
-
-# ============================================================
-# COMANDOS DEL BOT
-# ============================================================
+        return f"⚠️ Error: {str(e)[:50]}"
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    """Mensaje de bienvenida"""
-    bot.reply_to(message, """
-🤖 *BOT DE CONSULTA PATRIA*
-
-¡Bot funcionando correctamente!
-
-*Comandos disponibles:*
-
-🔐 *Sesión:*
-/estado - Verificar estado de la sesión
-
-🔍 *Consultas:*
-/buscar V12345678 - Consultar una cédula
-
-📖 *Ayuda:*
-/ayuda - Información detallada
-
-✅ El bot está 24/7
-""", parse_mode='Markdown')
-
-@bot.message_handler(commands=['ayuda'])
-def ayuda(message):
-    """Mensaje de ayuda detallada"""
-    bot.reply_to(message, """
-📖 *GUÍA DE USO*
-
-*Formato de cédulas:*
-• V12345678 (venezolano)
-• E87654321 (extranjero)
-• 12345678 (se asume V)
-
-*Ejemplos:*
-/buscar V12345678
-/buscar 98765432
-
-*Resultados posibles:*
-✅ REGISTRADA - La persona está en Patria
-❌ NO REGISTRADA - La persona NO está en Patria
-⚠️ Error - La sesión puede haber expirado
-
-*¿La sesión expiró?*
-El administrador debe actualizar el archivo de sesión.
-""", parse_mode='Markdown')
+    bot.reply_to(message, "🤖 Bot de Consulta Patria\n\n/buscar V12345678")
 
 @bot.message_handler(commands=['estado'])
 def estado(message):
-    """Verifica el estado de la sesión de Patria"""
     if sesion_activa():
-        # Obtener información del archivo
-        try:
-            stat = os.stat(SESSION_FILE)
-            fecha = datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M:%S")
-            bot.reply_to(message, f"✅ *SESION ACTIVA*\n📅 Última actualización: {fecha}", parse_mode='Markdown')
-        except:
-            bot.reply_to(message, "✅ *SESION ACTIVA*\nEl bot está listo para consultar", parse_mode='Markdown')
+        bot.reply_to(message, "✅ SESION ACTIVA - Puedes consultar")
     else:
-        bot.reply_to(message, """
-❌ *SESION NO CONFIGURADA*
-
-El archivo de sesión no está disponible.
-El administrador debe configurarlo.
-""", parse_mode='Markdown')
+        bot.reply_to(message, "⚠️ Descargando sesión...")
+        if descargar_sesion():
+            bot.reply_to(message, "✅ SESION DESCARGADA - Ahora puedes consultar")
+        else:
+            bot.reply_to(message, "❌ Error: No se pudo descargar la sesión")
 
 @bot.message_handler(commands=['buscar'])
 def buscar(message):
-    """Consulta una cédula individual"""
     try:
-        # Extraer y validar la cédula
         partes = message.text.split()
         if len(partes) < 2:
-            bot.reply_to(message, "❌ *Uso correcto:* `/buscar V12345678`", parse_mode='Markdown')
+            bot.reply_to(message, "Uso: /buscar V12345678")
             return
         
-        cedula_raw = partes[1].upper()
+        cedula = partes[1].upper()
+        if cedula[0] not in 'VE':
+            cedula = 'V' + cedula
         
-        # Validar formato
-        if cedula_raw[0] in 'VE':
-            tipo = cedula_raw[0]
-            numero = cedula_raw[1:]
-        else:
-            tipo = 'V'
-            numero = cedula_raw
-        
-        if not numero.isdigit():
-            bot.reply_to(message, "❌ *Formato inválido*\nUsa: V12345678 o E87654321", parse_mode='Markdown')
-            return
-        
-        cedula_completa = f"{tipo}-{numero}"
-        
-        # Verificar sesión antes de consultar
+        # Asegurar sesión
         if not sesion_activa():
-            bot.reply_to(message, "⚠️ *No hay sesión activa*\nEl administrador debe configurarla.", parse_mode='Markdown')
-            return
+            if not descargar_sesion():
+                bot.reply_to(message, "❌ No hay sesión activa")
+                return
         
-        # Avisar que comenzó la consulta
-        msg = bot.reply_to(message, f"🔍 *Consultando {cedula_completa}...*\n⏳ Un momento, por favor", parse_mode='Markdown')
+        msg = bot.reply_to(message, f"🔍 Consultando {cedula}...")
+        resultado = consultar_patria(cedula)
+        bot.edit_message_text(f"{cedula}: {resultado}", message.chat.id, msg.message_id)
         
-        # Realizar la consulta
-        resultado = consultar_patria(cedula_completa)
-        
-        # Responder según el resultado
-        if resultado == "NO_REGISTRADA":
-            bot.edit_message_text(f"❌ *{cedula_completa}*\n→ **NO REGISTRADA** en Patria", 
-                                 message.chat.id, msg.message_id, parse_mode='Markdown')
-        elif resultado == "REGISTRADA":
-            bot.edit_message_text(f"✅ *{cedula_completa}*\n→ **REGISTRADA** en Patria", 
-                                 message.chat.id, msg.message_id, parse_mode='Markdown')
-        elif resultado == "SESION_EXPIRADA":
-            bot.edit_message_text(f"⚠️ *Sesión expirada*\n\nEl administrador debe renovar el archivo patria_session.json", 
-                                 message.chat.id, msg.message_id, parse_mode='Markdown')
-        elif resultado == "SESION_NO_CONFIGURADA":
-            bot.edit_message_text(f"⚠️ *Sesión no configurada*\n\nEl administrador debe subir el archivo de sesión", 
-                                 message.chat.id, msg.message_id, parse_mode='Markdown')
-        else:
-            bot.edit_message_text(f"⚠️ *Error:* {resultado}", 
-                                 message.chat.id, msg.message_id)
-            
     except Exception as e:
-        bot.reply_to(message, f"❌ *Error:* {str(e)[:100]}", parse_mode='Markdown')
-        log(f"Error en comando buscar: {e}")
+        bot.reply_to(message, f"Error: {e}")
 
-@bot.message_handler(commands=['reload'])
-def recargar_sesion(message):
-    """Comando para recargar la sesión desde GitHub (solo administrador)"""
-    # Solo el administrador puede usar este comando
-    ADMIN_ID = os.environ.get("ADMIN_ID", "")
-    if ADMIN_ID and str(message.from_user.id) != ADMIN_ID:
-        bot.reply_to(message, "❌ Comando solo para administradores")
-        return
-    
-    bot.reply_to(message, "🔄 Recargando sesión desde GitHub...")
-    
-    if descargar_sesion():
-        bot.reply_to(message, "✅ *Sesión recargada correctamente*\n\nYa puedes usar /buscar", parse_mode='Markdown')
-    else:
-        bot.reply_to(message, "❌ *Error al recargar la sesión*\nVerifica el repositorio y el token", parse_mode='Markdown')
-
-# ============================================================
-# INICIO DEL BOT
-# ============================================================
+@bot.message_handler(commands=['ayuda'])
+def ayuda(message):
+    bot.reply_to(message, "Comandos:\n/buscar V12345678\n/estado")
 
 if __name__ == "__main__":
-    log("=" * 50)
-    log("🤖 BOT DE CONSULTA PATRIA INICIADO")
-    log("=" * 50)
-    
-    # Descargar la sesión desde GitHub al iniciar
-    if descargar_sesion():
-        log("✅ Sesión cargada correctamente")
-    else:
-        log("⚠️ No se pudo descargar la sesión. El bot funcionará sin sesión.")
-    
-    log(f"Sesión activa: {'✅ Sí' if sesion_activa() else '❌ No'}")
-    log("=" * 50)
-    log("🟢 Bot esperando mensajes...")
-    log("=" * 50)
-    
-    # Iniciar el bot con manejo de errores
-    while True:
-        try:
-            bot.infinity_polling(timeout=60)
-        except Exception as e:
-            log(f"Error en polling: {e}")
-            time.sleep(5)
+    print("Iniciando bot...")
+    descargar_sesion()
+    print(f"Sesión activa: {sesion_activa()}")
+    bot.infinity_polling()

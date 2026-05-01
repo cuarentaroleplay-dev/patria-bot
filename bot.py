@@ -290,46 +290,38 @@ def buscar(message):
         bot.reply_to(message, f"❌ *Error:* {str(e)[:100]}", parse_mode='Markdown')
         log(f"Error en comando buscar: {e}")
 
-@bot.message_handler(commands=['reload'])
-def recargar_sesion(message):
-    """Comando para recargar la sesión desde GitHub (solo administrador)"""
-    # Solo el administrador puede usar este comando
-    ADMIN_ID = os.environ.get("ADMIN_ID", "")
-    if ADMIN_ID and str(message.from_user.id) != ADMIN_ID:
-        bot.reply_to(message, "❌ Comando solo para administradores")
-        return
+@bot.message_handler(commands=['diagnostico'])
+def diagnostico(message):
+    """Comando para ver qué está pasando con la sesión"""
+    import os
+    mensaje = "🔍 *DIAGNÓSTICO DE SESIÓN*\n\n"
     
-    bot.reply_to(message, "🔄 Recargando sesión desde GitHub...")
-    
-    if descargar_sesion():
-        bot.reply_to(message, "✅ *Sesión recargada correctamente*\n\nYa puedes usar /buscar", parse_mode='Markdown')
-    else:
-        bot.reply_to(message, "❌ *Error al recargar la sesión*\nVerifica el repositorio y el token", parse_mode='Markdown')
-
-# ============================================================
-# INICIO DEL BOT
-# ============================================================
-
-if __name__ == "__main__":
-    log("=" * 50)
-    log("🤖 BOT DE CONSULTA PATRIA INICIADO")
-    log("=" * 50)
-    
-    # Descargar la sesión desde GitHub al iniciar
-    if descargar_sesion():
-        log("✅ Sesión cargada correctamente")
-    else:
-        log("⚠️ No se pudo descargar la sesión. El bot funcionará sin sesión.")
-    
-    log(f"Sesión activa: {'✅ Sí' if sesion_activa() else '❌ No'}")
-    log("=" * 50)
-    log("🟢 Bot esperando mensajes...")
-    log("=" * 50)
-    
-    # Iniciar el bot con manejo de errores
-    while True:
+    # 1. Verificar si el archivo existe
+    if os.path.exists("patria_session.json"):
+        mensaje += "✅ El archivo `patria_session.json` EXISTE\n\n"
+        
+        # Verificar tamaño
+        tamaño = os.path.getsize("patria_session.json")
+        mensaje += f"📦 Tamaño del archivo: {tamaño} bytes\n\n"
+        
+        # Leer primeras líneas
         try:
-            bot.infinity_polling(timeout=60)
+            with open("patria_session.json", "r") as f:
+                contenido = f.read()
+                if "cookies" in contenido:
+                    mensaje += "✅ El archivo tiene la estructura correcta (contiene 'cookies')\n\n"
+                else:
+                    mensaje += "❌ El archivo NO tiene la estructura correcta\n\n"
         except Exception as e:
-            log(f"Error en polling: {e}")
-            time.sleep(5)
+            mensaje += f"❌ Error al leer: {e}\n\n"
+    else:
+        mensaje += "❌ El archivo `patria_session.json` NO EXISTE\n\n"
+        mensaje += "Intentando descargar de nuevo...\n"
+        
+        # Forzar descarga
+        if descargar_sesion():
+            mensaje += "✅ Descarga forzada exitosa\n"
+        else:
+            mensaje += "❌ La descarga forzada falló\n"
+    
+    bot.send_message(message.chat.id, mensaje, parse_mode='Markdown')
